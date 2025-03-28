@@ -1,5 +1,6 @@
 // =========== 抓包模块实现 ===========
 #include "capture_module.h"
+#include "filter_module.h"
 #include "packet.h"
 
 #include <arpa/inet.h>
@@ -14,23 +15,13 @@
 #include <string>
 #include <tins/tcp_ip/stream_follower.h>
 #include <tins/tins.h> //新增：Tins库
+#include <vector>
 
 using boost::match_results;
 using boost::regex;
 using std::string;
 using Tins::TCPIP::Stream;
 using Tins::TCPIP::StreamFollower;
-
-std::vector<uint8_t>
-handle_chunked_transfer(const std::vector<uint8_t> &raw_data);
-
-// 定义Content-Type到文件扩展名的映射
-std::unordered_map<std::string, std::string> content_type_to_extension = {
-    {"text/html", ".html"},
-    {"image/jpeg", ".jpg"},
-    {"image/png", ".png"},
-    {"application/json", ".json"},
-};
 
 const size_t MAX_PAYLOAD = 300 * 1024;
 // 查找请求头的正则表达式
@@ -104,15 +95,6 @@ void parse_response_headers(const string &headers_section, string &content_type,
   }
 }
 
-// 确定文件扩展名
-string determine_extension(const string &content_type) {
-  string extension = ".bin"; // 默认扩展名
-  auto it = content_type_to_extension.find(content_type);
-  if (it != content_type_to_extension.end()) {
-    extension = it->second;
-  }
-  return extension;
-}
 
 // 保存响应数据到文件
 bool save_response_data(const Stream::payload_type &server_payload,
@@ -120,8 +102,8 @@ bool save_response_data(const Stream::payload_type &server_payload,
                         const string &content_type, const string &host,
                         const string &url) {
   std::string file_name;
-
-  string extension = determine_extension(content_type);
+  FilterModule filter_module;
+  string extension = filter_module.determine_extension(content_type,server_payload,url);
   if (url.ends_with('/')) {
     file_name = "output/" + host + url + "index" + extension;
   } else {
@@ -155,7 +137,8 @@ bool save_response_data(const Stream::payload_type &server_payload,
   if (transfer_encoding == "chunked") {
 
     // 处理分块传输
-    auto decoded_data = handle_chunked_transfer(server_payload);
+    FilterModule filter_module;
+    auto decoded_data = filter_module.handle_chunked_transfer(server_payload);
     file.write(reinterpret_cast<const char *>(decoded_data.data()),
                decoded_data.size());
     spdlog::info("已处理分块传输，解码后大小: {} 字节", decoded_data.size());
@@ -317,49 +300,4 @@ std::vector<Packet> CaptureModule::get_packets() {
   std::vector<Packet> packets = std::move(packet_buffer);
   packet_buffer.clear();
   return packets;
-}
-
-// 处理分块传输数据
-std::vector<uint8_t>
-handle_chunked_transfer(const std::vector<uint8_t> &raw_data) {
-  std::vector<uint8_t> result;
-  size_t pos = 0;
-
-  // 找到响应体开始的位置（跳过响应头）
-  const std::string header_end = "\r\n\r\n";
-  auto body_start = std::search(raw_data.begin(), raw_data.end(),
-                                header_end.begin(), header_end.end());
-  if (body_start == raw_data.end()) {
-    return result;
-  }
-  pos = (body_start - raw_data.begin()) + header_end.length();
-
-  // 处理每个分块
-  while (pos < raw_data.size()) {
-    // 读取分块大小
-    std::string chunk_size_str;
-    while (pos < raw_data.size() && raw_data[pos] != '\r') {
-      chunk_size_str += raw_data[pos++];
-    }
-    pos += 2; // 跳过\r\n
-
-    // 转换分块大小（十六进制）
-    size_t chunk_size;
-    std::stringstream ss;
-    ss << std::hex << chunk_size_str;
-    ss >> chunk_size;
-
-    // 如果分块大小为0，说明是最后一个分块
-    if (chunk_size == 0) {
-      break;
-    }
-
-    // 复制分块数据
-    result.insert(result.end(), raw_data.begin() + pos,
-                  raw_data.begin() + pos + chunk_size);
-
-    pos += chunk_size + 2; // 跳过分块数据和\r\n
-  }
-
-  return result;
 }
