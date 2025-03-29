@@ -17,6 +17,7 @@ add_executable(traffic_test
         src/capture_module.cpp
         src/control_module.cpp
         src/filter_module.cpp
+        src/save_module.cpp
 )
 
 target_link_libraries(traffic_test PRIVATE ${PCAP_LIBRARIES} fmt::fmt spdlog::spdlog tins)

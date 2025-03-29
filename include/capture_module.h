@@ -8,12 +8,11 @@
 #include <thread>
 #include <vector>
 
-
 // 前向声明libtins类
 namespace Tins {
-  class Sniffer;
-  class PDU;
-}
+class Sniffer;
+class PDU;
+} // namespace Tins
 
 class CaptureModule {
 private:

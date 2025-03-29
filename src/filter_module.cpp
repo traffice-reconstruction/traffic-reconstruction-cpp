@@ -1,5 +1,6 @@
 #include "filter_module.h"
-
+ 
+#include <spdlog/spdlog.h>
 #include <algorithm>
 #include <iostream>
 #include <netinet/ip.h>
@@ -43,6 +44,13 @@ FilterModule::handle_chunked_transfer(const std::vector<uint8_t> &raw_data) {
       break;
     }
 
+    // 检查是否有足够的数据
+    if (pos + chunk_size > raw_data.size()) {
+      
+      spdlog::error("分块大小超出数据范围");
+      break;
+    }
+
     // 复制分块数据
     result.insert(result.end(), raw_data.begin() + pos,
                   raw_data.begin() + pos + chunk_size);
@@ -53,7 +61,7 @@ FilterModule::handle_chunked_transfer(const std::vector<uint8_t> &raw_data) {
   return result;
 }
 
-// 
+//
 std::string
 FilterModule::determine_extension(const std::string &content_type,
                                   const Stream::payload_type &server_payload,
@@ -87,7 +95,6 @@ FilterModule::determine_extension(const std::string &content_type,
   }
 
   // 优先级2：基于魔数的扩展名检测
-
 
   // 优先级3：基于URL路径的扩展名猜测（如/download/file.exe）
   size_t last_dot = url.find_last_of('.');
